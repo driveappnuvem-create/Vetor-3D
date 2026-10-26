@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VectorLab 3D — Posição (Xi,Xf) e Ângulos Diretores (θx, θy, θz)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                        math: ['Georgia', 'Times New Roman', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            border: 1px solid #cbd5e1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -5px;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.18);
+        }
+
+        .slider-x::-webkit-slider-thumb {
+            background: #dc2626;
+            box-shadow: 0 0 8px rgba(220, 38, 38, 0.45);
+        }
+        .slider-y::-webkit-slider-thumb {
+            background: #16a34a;
+            box-shadow: 0 0 8px rgba(22, 163, 74, 0.45);
+        }
+        .slider-z::-webkit-slider-thumb {
+            background: #2563eb;
+            box-shadow: 0 0 8px rgba(37, 99, 235, 0.45);
+        }
+
+        /* Rótulos 3D flutuantes sincronizados via projeção de câmera */
+        .label-3d {
+            position: absolute;
+            pointer-events: none;
+            user-select: none;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.12s ease;
+            white-space: nowrap;
+        }
+
+        /* Estilo limpo de livro didático (Engineering Statics) em fundo branco */
+        .math-angle-label {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-style: italic;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            text-shadow:
+                0 0 6px rgba(255, 255, 255, 0.98),
+                0 0 12px rgba(255, 255, 255, 0.98),
+                1px 1px 2px rgba(255, 255, 255, 1),
+                -1px -1px 2px rgba(255, 255, 255, 1);
+        }
+
+        #canvas-container {
+            background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f1f5f9 100%);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased selection:bg-blue-500/20 selection:text-blue-900 overflow-x-hidden">
+
+    <!-- Layout Responsivo: Topo/Base no Celular, Lado a Lado no Desktop -->
+    <div class="flex flex-col lg:flex-row h-screen w-screen overflow-hidden">
+
+        <!-- ================= VIEWPORT 3D (ESQUERDA / TOPO) ================= -->
+        <main class="relative flex-1 h-[48vh] sm:h-[52vh] lg:h-full w-full overflow-hidden border-b lg:border-b-0 lg:border-r border-slate-200" id="canvas-container">
+            
+            <!-- Barra Superior Compacta: Título + Botões de Câmera -->
+            <div class="absolute top-2.5 left-2.5 right-2.5 z-20 flex flex-wrap items-center justify-between gap-1.5 pointer-events-none">
+                <!-- Identificação e Equação Atual -->
+                <div class="pointer-events-auto flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/90 px-3 py-1.5 rounded-xl shadow-sm">
+                    <div class="w-2.5 h-2.5 rounded-full bg-slate-900 ring-2 ring-amber-400"></div>
+                    <span class="text-xs font-bold tracking-tight text-slate-900">VectorLab</span>
+                    <span class="text-slate-300">|</span>
+                    <span id="viewport-vector-eq" class="font-mono text-xs font-bold text-slate-900">
+                        V = ⟨6, 5, 4⟩
+                    </span>
+                </div>
+
+                <!-- Botões de Vista 3D -->
+                <div class="pointer-events-auto flex flex-wrap items-center gap-1">
+                    <button onclick="setCameraView('iso')" class="bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200 backdrop-blur-md px-2 py-1 rounded-lg text-[11px] font-semibold shadow-sm transition active:scale-95">
+                        Isométrica
+                    </button>
+                    <button onclick="setCameraView('xy')" class="bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200 backdrop-blur-md px-2 py-1 rounded-lg text-[11px] font-semibold shadow-sm transition active:scale-95">
+                        XY
+                    </button>
+                    <button onclick="setCameraView('xz')" class="bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200 backdrop-blur-md px-2 py-1 rounded-lg text-[11px] font-semibold shadow-sm transition active:scale-95">
+                        XZ
+                    </button>
+                    <button onclick="setCameraView('yz')" class="bg-white/90 hover:bg-slate-100 text-slate-700 border border-slate-200 backdrop-blur-md px-2 py-1 rounded-lg text-[11px] font-semibold shadow-sm transition active:scale-95">
+                        YZ
+                    </button>
+                    <button onclick="focusOnVector()" class="bg-slate-900 hover:bg-slate-800 text-white border border-slate-900 px-2.5 py-1 rounded-lg text-[11px] font-semibold shadow-sm transition active:scale-95" title="Centralizar câmera no vetor atual">
+                        Focar Vetor
+                    </button>
+                </div>
+            </div>
+
+            <!-- Barra Inferior Flutuante: Seletor de Cotas (θx, θy, θz) e Planos estilo Engineering Statics -->
+            <div class="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 pointer-events-none">
+                
+                <!-- Filtro de Ângulos Diretores (Cotas nos Eixos) -->
+                <div class="pointer-events-auto flex items-center justify-between sm:justify-start gap-1 bg-white/95 backdrop-blur-md border border-slate-200 p-1 rounded-xl shadow-sm overflow-x-auto">
+                    <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 px-2 hidden xl:inline">Cotas:</span>
+                    <button onclick="setAngleFilter('all')" id="btn-ang-all" class="px-2 py-1 rounded-lg text-[11px] font-semibold bg-slate-900 text-white border border-slate-900 transition whitespace-nowrap">
+                        Todos (θx, θy, θz)
+                    </button>
+                    <button onclick="setAngleFilter('x')" id="btn-ang-x" class="px-2 py-1 rounded-lg text-[11px] font-serif italic font-bold text-red-600 hover:bg-slate-100 border border-transparent transition">
+                        θ<sub>x</sub>
+                    </button>
+                    <button onclick="setAngleFilter('y')" id="btn-ang-y" class="px-2 py-1 rounded-lg text-[11px] font-serif italic font-bold text-emerald-600 hover:bg-slate-100 border border-transparent transition">
+                        θ<sub>y</sub>
+                    </button>
+                    <button onclick="setAngleFilter('z')" id="btn-ang-z" class="px-2 py-1 rounded-lg text-[11px] font-serif italic font-bold text-blue-600 hover:bg-slate-100 border border-transparent transition">
+                        θ<sub>z</sub>
+                    </button>
+                    <button onclick="setAngleFilter('none')" id="btn-ang-none" class="px-2 py-1 rounded-lg text-[11px] font-medium text-slate-500 hover:bg-slate-100 border border-transparent transition">
+                        Ocultar
+                    </button>
+                </div>
+
+                <!-- Toggles de Camadas Geométricas -->
+                <div class="pointer-events-auto flex flex-wrap items-center justify-center sm:justify-end gap-2.5 bg-white/95 backdrop-blur-md border border-slate-200 px-3 py-1.5 rounded-xl shadow-sm">
+                    <label class="flex items-center gap-1 cursor-pointer text-[11px] font-medium text-slate-700 select-none" title="Exibir triângulos sombreados entre o vetor e cada eixo (Estilo Hibbeler / EngineeringStatics)">
+                        <input type="checkbox" id="toggle-triangles" checked class="accent-slate-900 rounded cursor-pointer">
+                        <span>Triângulos Diretores</span>
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer text-[11px] font-medium text-slate-700 select-none" title="Mostrar o valor em graus junto ao símbolo θx, θy, θz">
+                        <input type="checkbox" id="toggle-angle-deg" class="accent-slate-900 rounded cursor-pointer">
+                        <span>Graus no 3D</span>
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer text-[11px] font-medium text-slate-700 select-none">
+                        <input type="checkbox" id="toggle-box" class="accent-slate-900 rounded cursor-pointer">
+                        <span>Caixa 3D</span>
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer text-[11px] font-medium text-slate-700 select-none">
+                        <input type="checkbox" id="toggle-components" checked class="accent-slate-900 rounded cursor-pointer">
+                        <span>Setas i, j, k</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Camada de Rótulos 3D Dinâmicos -->
+            <div id="labels-container" class="absolute inset-0 overflow-hidden pointer-events-none z-10"></div>
+
+        </main>
+
+        <!-- ================= PAINEL DE CONTROLES E MATEMÁTICA (DIREITA / BASE) ================= -->
+        <aside class="w-full lg:w-[460px] xl:w-[500px] h-[52vh] sm:h-[48vh] lg:h-full bg-slate-50 flex flex-col overflow-y-auto p-3.5 sm:p-5 space-y-4">
+
+            <!-- SEÇÃO 1: COORDENADAS DO PONTO INICIAL (Xi, Yi, Zi) E FINAL (Xf, Yf, Zf) -->
+            <section class="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-3.5">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                    <div>
+                        <h2 class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-slate-900"></span>
+                            Coordenadas de Início e Fim
+                        </h2>
+                        <p class="text-[11px] text-slate-500">O vetor parte de <strong class="text-slate-800">P<sub>i</sub> (X<sub>i</sub>, Y<sub>i</sub>, Z<sub>i</sub>)</strong> até <strong class="text-slate-900">P<sub>f</sub> (X<sub>f</sub>, Y<sub>f</sub>, Z<sub>f</sub>)</strong></p>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="snapInitialToOrigin()" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[11px] font-semibold transition active:scale-95" title="Colocar Ponto Inicial na Origem (0, 0, 0)">
+                            P<sub>i</sub> = (0,0,0)
+                        </button>
+                        <button onclick="swapPointsAB()" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[11px] font-mono font-semibold transition active:scale-95" title="Trocar Ponto Inicial e Ponto Final">
+                            P<sub>i</sub> ↔ P<sub>f</sub>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabela / Grade de Inputs: Ponto Inicial vs Ponto Final -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    
+                    <!-- Card Ponto Inicial Pi (Xi, Yi, Zi) -->
+                    <div class="bg-slate-50/80 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                                Ponto Inicial P<sub>i</sub>
+                            </span>
+                            <span id="badge-pi" class="font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                Origem
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <div>
+                                <label for="inp-xi" class="block text-[10px] font-mono text-red-600 mb-1 text-center font-bold">X<sub>i</sub></label>
+                                <input type="number" id="inp-xi" step="0.5" value="0"
+                                    class="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-lg px-1.5 py-1.5 text-center font-mono text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none">
+                            </div>
+                            <div>
+                                <label for="inp-yi" class="block text-[10px] font-mono text-emerald-600 mb-1 text-center font-bold">Y<sub>i</sub></label>
+                                <input type="number" id="inp-yi" step="0.5" value="0"
+                                    class="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-lg px-1.5 py-1.5 text-center font-mono text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none">
+                            </div>
+                            <div>
+                                <label for="inp-zi" class="block text-[10px] font-mono text-blue-600 mb-1 text-center font-bold">Z<sub>i</sub></label>
+                                <input type="number" id="inp-zi" step="0.5" value="0"
+                                    class="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-lg px-1.5 py-1.5 text-center font-mono text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card Ponto Final Pf (Xf, Yf, Zf) -->
+                    <div class="bg-slate-50/80 border border-slate-300 rounded-xl p-3 space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-red-600"></span>
+                                Ponto Final P<sub>f</sub>
+                            </span>
+                            <span class="font-mono text-[10px] text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                Ponta da Seta
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <div>
+                                <label for="inp-xf" class="block text-[10px] font-mono text-red-600 mb-1 text-center font-bold">X<sub>f</sub></label>
+                                <input type="number" id="inp-xf" step="0.5" value="6"
+                                    class="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-lg px-1.5 py-1.5 text-center font-mono text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none">
+                            </div>
+                            <div>
+                                <label for="inp-yf" class="block text-[10px] font-mono text-emerald-600 mb-1 text-center font-bold">Y<sub>f</sub></label>
+                                <input type="number" id="inp-yf" step="0.5" value="5"
+                                    class="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-lg px-1.5 py-1.5 text-center font-mono text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none">
+                            </div>
+                            <div>
+                                <label for="inp-zf" class="block text-[10px] font-mono text-blue-600 mb-1 text-center font-bold">Z<sub>f</sub></label>
+                                <input type="number" id="inp-zf" step="0.5" value="4"
+                                    class="w-full bg-white border border-slate-300 focus:border-slate-900 rounded-lg px-1.5 py-1.5 text-center font-mono text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Presets Didáticos -->
+                <div class="pt-0.5">
+                    <span class="text-[11px] text-slate-500 block mb-1.5 font-medium">Exemplos Rápidos:</span>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        <button onclick="setPoints(0,0,0, 6,5,4)" class="bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg py-1.5 px-2 text-[11px] font-mono font-semibold text-slate-800 transition">
+                            Fig 2.4.4 ⟨6,5,4⟩
+                        </button>
+                        <button onclick="setPoints(2,1,1, 7,6,5)" class="bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg py-1.5 px-2 text-[11px] font-mono font-semibold text-slate-700 transition">
+                            Fora da Origem
+                        </button>
+                        <button onclick="setPoints(-3,-2,1, 3,4,6)" class="bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg py-1.5 px-2 text-[11px] font-mono font-semibold text-slate-700 transition">
+                            P<sub>i</sub>(-3,-2,1)→P<sub>f</sub>
+                        </button>
+                        <button onclick="randomPoints()" class="bg-slate-900 hover:bg-slate-800 text-white rounded-lg py-1.5 px-2 text-[11px] font-semibold transition">
+                            Sortear P<sub>i</sub> e P<sub>f</sub>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SEÇÃO 2: COMPONENTES RESULTANTES DO VETOR (ΔX i, ΔY j, ΔZ k) -->
+            <section class="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div>
+                        <h2 class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
+                            Componentes do Vetor (V = P<sub>f</sub> − P<sub>i</sub>)
+                        </h2>
+                        <p class="text-[11px] text-slate-500">Ajustar os sliders altera <strong class="text-slate-800">P<sub>f</sub></strong> mantendo <strong class="text-slate-800">P<sub>i</sub></strong> fixo</p>
+                    </div>
+                    <button onclick="normalizeToInput()" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-[11px] font-mono font-bold transition active:scale-95" title="Normalizar comprimento para 1 mantendo Pi">
+                        |V|=1
+                    </button>
+                </div>
+
+                <!-- Componente Vx = Xf - Xi -->
+                <div class="space-y-1 bg-red-50/40 p-2.5 rounded-xl border border-red-200/80">
+                    <div class="flex items-center justify-between">
+                        <label for="num-vx" class="text-xs font-bold text-red-700 flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 rounded bg-red-100 border border-red-300 font-mono text-red-700">î</span>
+                            <span>V<sub>x</sub> = X<sub>f</sub> − X<sub>i</sub></span>
+                            <span id="calc-vx-sub" class="text-[11px] font-mono text-slate-500 font-normal">(6 − 0)</span>
+                        </label>
+                        <input type="number" id="num-vx" step="0.5" value="6"
+                            class="w-20 bg-white border border-slate-300 focus:border-red-600 rounded-lg px-2 py-1 text-right font-mono text-xs sm:text-sm font-bold text-slate-900 focus:outline-none">
+                    </div>
+                    <div class="flex items-center gap-2 pt-0.5">
+                        <span class="text-[10px] font-mono text-slate-400">-12</span>
+                        <input type="range" id="slider-vx" min="-12" max="12" step="0.5" value="6" class="w-full slider-x">
+                        <span class="text-[10px] font-mono text-slate-400">+12</span>
+                    </div>
+                </div>
+
+                <!-- Componente Vy = Yf - Yi -->
+                <div class="space-y-1 bg-emerald-50/40 p-2.5 rounded-xl border border-emerald-200/80">
+                    <div class="flex items-center justify-between">
+                        <label for="num-vy" class="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-100 border border-emerald-300 font-mono text-emerald-700">ĵ</span>
+                            <span>V<sub>y</sub> = Y<sub>f</sub> − Y<sub>i</sub></span>
+                            <span id="calc-vy-sub" class="text-[11px] font-mono text-slate-500 font-normal">(5 − 0)</span>
+                        </label>
+                        <input type="number" id="num-vy" step="0.5" value="5"
+                            class="w-20 bg-white border border-slate-300 focus:border-emerald-600 rounded-lg px-2 py-1 text-right font-mono text-xs sm:text-sm font-bold text-slate-900 focus:outline-none">
+                    </div>
+                    <div class="flex items-center gap-2 pt-0.5">
+                        <span class="text-[10px] font-mono text-slate-400">-12</span>
+                        <input type="range" id="slider-vy" min="-12" max="12" step="0.5" value="5" class="w-full slider-y">
+                        <span class="text-[10px] font-mono text-slate-400">+12</span>
+                    </div>
+                </div>
+
+                <!-- Componente Vz = Zf - Zi -->
+                <div class="space-y-1 bg-blue-50/40 p-2.5 rounded-xl border border-blue-200/80">
+                    <div class="flex items-center justify-between">
+                        <label for="num-vz" class="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                            <span class="px-1.5 py-0.5 rounded bg-blue-100 border border-blue-300 font-mono text-blue-700">k̂</span>
+                            <span>V<sub>z</sub> = Z<sub>f</sub> − Z<sub>i</sub></span>
+                            <span id="calc-vz-sub" class="text-[11px] font-mono text-slate-500 font-normal">(4 − 0)</span>
+                        </label>
+                        <input type="number" id="num-vz" step="0.5" value="4"
+                            class="w-20 bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-2 py-1 text-right font-mono text-xs sm:text-sm font-bold text-slate-900 focus:outline-none">
+                    </div>
+                    <div class="flex items-center gap-2 pt-0.5">
+                        <span class="text-[10px] font-mono text-slate-400">-12</span>
+                        <input type="range" id="slider-vz" min="-12" max="12" step="0.5" value="4" class="w-full slider-z">
+                        <span class="text-[10px] font-mono text-slate-400">+12</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SEÇÃO 3: ÂNGULOS DIRETORES DE COSSENO (θx, θy, θz) E PROPRIEDADES -->
+            <section class="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-3.5">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h2 class="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
+                        Ângulos de Cosseno Diretor (θ<sub>x</sub>, θ<sub>y</sub>, θ<sub>z</sub>)
+                    </h2>
+                    <button onclick="copySummary()" id="btn-copy" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-200 transition">
+                        Copiar Cálculo
+                    </button>
+                </div>
+
+                <!-- Cards de Ângulos Diretores com Fórmulas Explícitas (Estilo Engineering Statics) -->
+                <div class="grid grid-cols-3 gap-2">
+                    <!-- Theta X -->
+                    <div onclick="setAngleFilter('x')" class="cursor-pointer bg-red-50/50 hover:bg-red-50 border border-red-200 rounded-xl p-2.5 text-center transition">
+                        <div class="font-serif italic font-bold text-base text-red-600">θ<sub>x</sub></div>
+                        <div id="angle-tx" class="font-mono text-sm sm:text-base font-bold text-slate-900 mt-0.5">46.9°</div>
+                        <div id="cos-tx" class="font-mono text-[10px] text-slate-600 mt-0.5">cos θ<sub>x</sub> = 0.684</div>
+                    </div>
+
+                    <!-- Theta Y -->
+                    <div onclick="setAngleFilter('y')" class="cursor-pointer bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-center transition">
+                        <div class="font-serif italic font-bold text-base text-emerald-600">θ<sub>y</sub></div>
+                        <div id="angle-ty" class="font-mono text-sm sm:text-base font-bold text-slate-900 mt-0.5">55.3°</div>
+                        <div id="cos-ty" class="font-mono text-[10px] text-slate-600 mt-0.5">cos θ<sub>y</sub> = 0.570</div>
+                    </div>
+
+                    <!-- Theta Z -->
+                    <div onclick="setAngleFilter('z')" class="cursor-pointer bg-blue-50/50 hover:bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-center transition">
+                        <div class="font-serif italic font-bold text-base text-blue-600">θ<sub>z</sub></div>
+                        <div id="angle-tz" class="font-mono text-sm sm:text-base font-bold text-slate-900 mt-0.5">62.9°</div>
+                        <div id="cos-tz" class="font-mono text-[10px] text-slate-600 mt-0.5">cos θ<sub>z</sub> = 0.456</div>
+                    </div>
+                </div>
+
+                <!-- Expressão Algébrica e Módulo |V| -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Vetor Posição (V = P<sub>f</sub> − P<sub>i</sub>)</span>
+                        <div id="math-algebraic" class="font-mono text-xs sm:text-sm font-bold text-slate-900 mt-1">
+                            V = 6î + 5ĵ + 4k̂
+                        </div>
+                        <div id="math-step-diff" class="font-mono text-[10px] text-slate-500 mt-1">
+                            ⟨6−0, 5−0, 4−0⟩ = ⟨6, 5, 4⟩
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Módulo (Comprimento |V|)</span>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <span id="math-magnitude" class="font-mono text-base font-bold text-slate-900">8.7750</span>
+                            <span id="math-magnitude-exact" class="font-mono text-xs font-semibold text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200">√77</span>
+                        </div>
+                        <div id="math-magnitude-formula" class="font-mono text-[10px] text-slate-500 mt-1 truncate">
+                            √(6² + 5² + 4²)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vetor Unitário (Versor u) -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
+                            Vetor Unitário (û = V / |V| = cos θ<sub>x</sub>î + cos θ<sub>y</sub>ĵ + cos θ<sub>z</sub>k̂)
+                        </span>
+                    </div>
+                    <div id="math-unit-eq" class="font-mono text-xs text-slate-800 font-semibold bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
+                        û = 0.6838î + 0.5698ĵ + 0.4558k̂
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <!-- ================= LÓGICA 3D (THREE.JS) E GEOMETRIA DE ESTÁTICA ================= -->
+    <script>
+        // Estado Global (Por padrão inicia com o vetor A = <6, 5, 4> da Figura 2.4.4 do Engineering Statics)
+        const state = {
+            xi: 0, yi: 0, zi: 0,
+            xf: 6, yf: 5, zf: 4,
+            angleFilter: 'all',     // 'all', 'x', 'y', 'z', 'none'
+            showTriangles: true,    // Triângulos sombreados entre o vetor e cada eixo
+            showAngleDeg: false,    // Mostrar apenas "θx" (limpo como no livro) ou "θx = 47°"
+            showBox: false,         // Paralelepípedo 3D completo
+            showComponents: true    // Setas Vx i, Vy j, Vz k nos eixos
+        };
+
+        let scene, camera, renderer, controls;
+        let mainGroup;
+        const labels3D = [];
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+
+            // Câmera Z-Up (Eixo Z vertical como nos livros de Estática)
+            camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000);
+            camera.up.set(0, 0, 1);
+            // Perspectiva clássica da Figura 2.4.4 (X à esquerda/frente, Y à direita, Z para cima)
+            camera.position.set(14, 12, 9.5);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.07;
+            controls.maxDistance = 80;
+            controls.minDistance = 3;
+
+            // Iluminação clara para fundo branco
+            scene.add(new THREE.AmbientLight(0xffffff, 0.92));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.55);
+            dirLight.position.set(18, 22, 25);
+            scene.add(dirLight);
+
+            mainGroup = new THREE.Group();
+            scene.add(mainGroup);
+
+            buildGlobalAxesAndGrid();
+            refreshAll();
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        // Constrói uma Grade Global sutil no Plano XY (Z=0) sobre o fundo branco
+        function buildGlobalAxesAndGrid() {
+            const gridHelper = new THREE.GridHelper(20, 20, 0xcbd5e1, 0xe2e8f0);
+            gridHelper.rotation.x = Math.PI / 2;
+            gridHelper.position.z = -0.01;
+            scene.add(gridHelper);
+        }
+
+        // Cria um eixo coordenado fino e discreto na cor grafite/preto (Estilo Livro Didático)
+        function createUniformReferenceAxis(origin, dir, posLength, negLength, axisColor = 0x1e293b) {
+            const group = new THREE.Group();
+
+            // Haste fina positiva
+            const shaftGeo = new THREE.CylinderGeometry(0.025, 0.025, posLength, 12);
+            shaftGeo.translate(0, posLength / 2, 0);
+            const shaftMat = new THREE.MeshBasicMaterial({ color: axisColor });
+            const shaft = new THREE.Mesh(shaftGeo, shaftMat);
+
+            // Ponta de seta pequena e discreta no final do eixo
+            const coneLen = 0.32;
+            const coneRad = 0.085;
+            const coneGeo = new THREE.ConeGeometry(coneRad, coneLen, 16);
+            coneGeo.translate(0, posLength + coneLen / 2, 0);
+            const cone = new THREE.Mesh(coneGeo, shaftMat);
+
+            const posGroup = new THREE.Group();
+            posGroup.add(shaft);
+            posGroup.add(cone);
+            posGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            posGroup.position.copy(origin);
+            group.add(posGroup);
+
+            // Prolongamento negativo fino (linha simples discreta como na Figura 2.4.4)
+            if (negLength > 0) {
+                const negEnd = origin.clone().add(dir.clone().multiplyScalar(-negLength));
+                const negGeo = new THREE.BufferGeometry().setFromPoints([origin, negEnd]);
+                const negMat = new THREE.LineBasicMaterial({ color: axisColor, transparent: true, opacity: 0.45 });
+                group.add(new THREE.Line(negGeo, negMat));
+            }
+
+            return group;
+        }
+
+        // Cria seta 3D (Cilindro + Cone)
+        function createCustomArrow(origin, dirVector, length, colorHex, shaftRadius = 0.08, headLength = 0.55, headRadius = 0.22, opacity = 1.0) {
+            const group = new THREE.Group();
+            if (length < 0.001) return group;
+
+            const dir = dirVector.clone().normalize();
+            const actualHeadLength = Math.min(headLength, length * 0.42);
+            const shaftLength = Math.max(0.001, length - actualHeadLength);
+
+            const material = new THREE.MeshStandardMaterial({
+                color: colorHex,
+                roughness: 0.3,
+                metalness: 0.1,
+                transparent: opacity < 1.0,
+                opacity: opacity
+            });
+
+            const shaftGeo = new THREE.CylinderGeometry(shaftRadius, shaftRadius, shaftLength, 20);
+            shaftGeo.translate(0, shaftLength / 2, 0);
+            group.add(new THREE.Mesh(shaftGeo, material));
+
+            const headGeo = new THREE.ConeGeometry(headRadius, actualHeadLength, 24);
+            headGeo.translate(0, shaftLength + actualHeadLength / 2, 0);
+            group.add(new THREE.Mesh(headGeo, material));
+
+            group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            group.position.copy(origin);
+            return group;
+        }
+
+        // Cria linha tracejada
+        function createDashedLine(p1, p2, colorHex, dashSize = 0.22, gapSize = 0.14, opacity = 0.85) {
+            const geometry = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const material = new THREE.LineDashedMaterial({
+                color: colorHex,
+                dashSize: dashSize,
+                gapSize: gapSize,
+                transparent: true,
+                opacity: opacity
+            });
+            const line = new THREE.Line(geometry, material);
+            line.computeLineDistances();
+            return line;
+        }
+
+        // Cria um triângulo 3D preenchido semitransparente entre 3 pontos (Estilo Figura 2.4.4)
+        function createTrianglePlane(pA, pB, pC, colorHex, opacity = 0.18) {
+            const geom = new THREE.BufferGeometry();
+            const vertices = new Float32Array([
+                pA.x, pA.y, pA.z,
+                pB.x, pB.y, pB.z,
+                pC.x, pC.y, pC.z
+            ]);
+            geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geom.computeVertexNormals();
+
+            const mat = new THREE.MeshBasicMaterial({
+                color: colorHex,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: opacity,
+                depthWrite: false
+            });
+            return new THREE.Mesh(geom, mat);
+        }
+
+        // Cria o Setor Circular Preenchido (Fatia de Pizza) + Arco de Cota com Setinhas nas Pontas (Estilo Figura 2.4.4)
+        function createDimensionSectorAndArc(origin, startDir, endDir, radius, colorHex, fillOpacity = 0.34) {
+            const group = new THREE.Group();
+            const segments = 32;
+            const arcPoints = [];
+
+            // Gerar pontos do arco sobre a esfera de raio `radius` centrada em `origin`
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const pt = new THREE.Vector3().lerpVectors(startDir, endDir, t);
+                if (pt.lengthSq() < 0.0001) pt.set(0, 0, 1);
+                pt.normalize().multiplyScalar(radius).add(origin);
+                arcPoints.push(pt);
+            }
+
+            // 1. Malha de Setor Circular (Fatia Sombreada entre o eixo e o vetor)
+            const sectorVertices = [];
+            for (let i = 0; i < segments; i++) {
+                sectorVertices.push(
+                    origin.x, origin.y, origin.z,
+                    arcPoints[i].x, arcPoints[i].y, arcPoints[i].z,
+                    arcPoints[i + 1].x, arcPoints[i + 1].y, arcPoints[i + 1].z
+                );
+            }
+            const sectorGeo = new THREE.BufferGeometry();
+            sectorGeo.setAttribute('position', new THREE.Float32BufferAttribute(sectorVertices, 3));
+            const sectorMat = new THREE.MeshBasicMaterial({
+                color: colorHex,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: fillOpacity,
+                depthWrite: false
+            });
+            group.add(new THREE.Mesh(sectorGeo, sectorMat));
+
+            // 2. Linha Contínua do Arco de Cota
+            const arcLineGeo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+            const arcLineMat = new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 });
+            group.add(new THREE.Line(arcLineGeo, arcLineMat));
+
+            // 3. Pequenos Cones nas duas extremidades do arco (Setinhas de Cota Técnica)
+            const angleRad = startDir.angleTo(endDir);
+            if (angleRad > 0.18 && radius > 0.7) {
+                const coneLen = Math.min(0.24, radius * 0.16);
+                const coneRad = coneLen * 0.38;
+                const coneMat = new THREE.MeshBasicMaterial({ color: colorHex });
+
+                // Setinha na extremidade do vetor (apontando para o vetor)
+                const tangentEnd = new THREE.Vector3().subVectors(arcPoints[segments], arcPoints[segments - 2]).normalize();
+                const coneEndGeo = new THREE.ConeGeometry(coneRad, coneLen, 12);
+                coneEndGeo.translate(0, -coneLen / 2, 0);
+                const coneEnd = new THREE.Mesh(coneEndGeo, coneMat);
+                coneEnd.position.copy(arcPoints[segments]);
+                coneEnd.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangentEnd);
+                group.add(coneEnd);
+
+                // Setinha na extremidade do eixo (apontando para o eixo)
+                const tangentStart = new THREE.Vector3().subVectors(arcPoints[0], arcPoints[2]).normalize();
+                const coneStartGeo = new THREE.ConeGeometry(coneRad, coneLen, 12);
+                coneStartGeo.translate(0, -coneLen / 2, 0);
+                const coneStart = new THREE.Mesh(coneStartGeo, coneMat);
+                coneStart.position.copy(arcPoints[0]);
+                coneStart.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangentStart);
+                group.add(coneStart);
+            }
+
+            return { group, midPoint: arcPoints[Math.floor(segments / 2)] };
+        }
+
+        function create3DLabel(position3D, htmlText, cssClasses, dynamic = true) {
+            const container = document.getElementById('labels-container');
+            const div = document.createElement('div');
+            div.className = `label-3d ${cssClasses}`;
+            div.innerHTML = htmlText;
+            container.appendChild(div);
+
+            const labelObj = { element: div, position: position3D.clone(), dynamic };
+            labels3D.push(labelObj);
+            return labelObj;
+        }
+
+        function clearDynamicScene() {
+            while (mainGroup.children.length > 0) {
+                const obj = mainGroup.children[0];
+                mainGroup.remove(obj);
+            }
+            const container = document.getElementById('labels-container');
+            for (let i = labels3D.length - 1; i >= 0; i--) {
+                if (labels3D[i].dynamic) {
+                    container.removeChild(labels3D[i].element);
+                    labels3D.splice(i, 1);
+                }
+            }
+        }
+
+        // Reconstrói toda a Geometria 3D de acordo com Pi(Xi,Yi,Zi) e Pf(Xf,Yf,Zf)
+        function updateSceneGeometry() {
+            clearDynamicScene();
+
+            const pI = new THREE.Vector3(state.xi, state.yi, state.zi);
+            const pF = new THREE.Vector3(state.xf, state.yf, state.zf);
+            const vecV = new THREE.Vector3().subVectors(pF, pI);
+            const vx = vecV.x;
+            const vy = vecV.y;
+            const vz = vecV.z;
+            const length = vecV.length();
+
+            const isAtOrigin = pI.lengthSq() < 0.0001;
+
+            // Comprimento compacto dos eixos: sempre proporcionais e menores em espessura que o vetor principal
+            const maxComp = Math.max(Math.abs(vx), Math.abs(vy), Math.abs(vz), 4);
+            const axisPosLen = Math.min(10, Math.max(5.5, maxComp + 1.4));
+            const axisNegLen = Math.min(4.5, Math.max(2.2, maxComp * 0.4));
+            const uniformAxisColor = 0x1e293b; // Todos os eixos x, y, z da mesma cor grafite/preto
+
+            // 1. Eixos Coordenados (x, y, z) todos da mesma cor e mais finos para destacar o vetor
+            const refAxes = [
+                { dir: new THREE.Vector3(1, 0, 0), name: isAtOrigin ? 'x' : "x'" },
+                { dir: new THREE.Vector3(0, 1, 0), name: isAtOrigin ? 'y' : "y'" },
+                { dir: new THREE.Vector3(0, 0, 1), name: isAtOrigin ? 'z' : "z'" }
+            ];
+
+            refAxes.forEach(ax => {
+                mainGroup.add(createUniformReferenceAxis(pI, ax.dir, axisPosLen, axisNegLen, uniformAxisColor));
+                const labelPos = pI.clone().add(ax.dir.clone().multiplyScalar(axisPosLen + 0.65));
+                create3DLabel(
+                    labelPos,
+                    ax.name,
+                    'font-serif italic font-bold text-sm text-slate-800 math-angle-label',
+                    true
+                );
+            });
+
+            // Se Pi estiver fora da origem (0,0,0), mostrar eixos globais bem suaves na origem + linha tracejada até Pi
+            if (!isAtOrigin) {
+                [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)].forEach(dir => {
+                    mainGroup.add(createDashedLine(new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(4.5), 0x64748b, 0.2, 0.15, 0.4));
+                });
+                mainGroup.add(createDashedLine(new THREE.Vector3(0, 0, 0), pI, 0x475569, 0.2, 0.16, 0.55));
+            }
+
+            // Esfera marcando o Ponto Inicial Pi
+            const piSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.14, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x0f172a })
+            );
+            piSphere.position.copy(pI);
+            mainGroup.add(piSphere);
+
+            if (!isAtOrigin) {
+                create3DLabel(
+                    pI.clone().add(new THREE.Vector3(0, 0, -0.55)),
+                    `P<sub>i</sub>(${fmtNum(state.xi)}, ${fmtNum(state.yi)}, ${fmtNum(state.zi)})`,
+                    'px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-white/95 text-slate-800 border border-slate-300 shadow-sm',
+                    true
+                );
+            }
+
+            if (length < 0.001) return;
+
+            // Pontos das extremidades das componentes a partir de Pi
+            const tipX = new THREE.Vector3(state.xf, state.yi, state.zi);
+            const tipY = new THREE.Vector3(state.xi, state.yf, state.zi);
+            const tipZ = new THREE.Vector3(state.xi, state.yi, state.zf);
+
+            // 2. Vetores Componentes Vx i, Vy j, Vz k sobre os eixos com cores vivas no fundo branco
+            if (state.showComponents) {
+                if (Math.abs(vx) > 0.05) {
+                    mainGroup.add(createCustomArrow(pI, new THREE.Vector3(vx, 0, 0), Math.abs(vx), 0xdc2626, 0.068, 0.48, 0.19, 1.0));
+                    create3DLabel(
+                        tipX.clone().add(new THREE.Vector3(0, -0.42, -0.35)),
+                        `${fmtNum(vx)}î`,
+                        'font-mono text-[11px] font-bold text-red-700 bg-white/90 px-1 rounded border border-red-200 shadow-sm',
+                        true
+                    );
+                }
+                if (Math.abs(vy) > 0.05) {
+                    mainGroup.add(createCustomArrow(pI, new THREE.Vector3(0, vy, 0), Math.abs(vy), 0x16a34a, 0.068, 0.48, 0.19, 1.0));
+                    create3DLabel(
+                        tipY.clone().add(new THREE.Vector3(-0.42, 0, -0.35)),
+                        `${fmtNum(vy)}ĵ`,
+                        'font-mono text-[11px] font-bold text-emerald-700 bg-white/90 px-1 rounded border border-emerald-200 shadow-sm',
+                        true
+                    );
+                }
+                if (Math.abs(vz) > 0.05) {
+                    mainGroup.add(createCustomArrow(pI, new THREE.Vector3(0, 0, vz), Math.abs(vz), 0x2563eb, 0.068, 0.48, 0.19, 1.0));
+                    create3DLabel(
+                        tipZ.clone().add(new THREE.Vector3(-0.45, -0.45, 0)),
+                        `${fmtNum(vz)}k̂`,
+                        'font-mono text-[11px] font-bold text-blue-700 bg-white/90 px-1 rounded border border-blue-200 shadow-sm',
+                        true
+                    );
+                }
+            }
+
+            // 3. Planos Triangulares Diretores + Linhas Tracejadas da Ponta Pf até cada Eixo (Estilo Figura 2.4.4)
+            const vNorm = vecV.clone().normalize();
+            const baseRadius = Math.min(3.2, Math.max(1.2, length * 0.36));
+
+            const axesData = [
+                {
+                    key: 'x',
+                    axisDir: new THREE.Vector3(1, 0, 0),
+                    compTip: tipX,
+                    compVal: vx,
+                    color: 0xdc2626,
+                    textClass: 'text-red-600',
+                    symbol: 'θ<sub>x</sub>',
+                    radiusScale: 0.85
+                },
+                {
+                    key: 'y',
+                    axisDir: new THREE.Vector3(0, 1, 0),
+                    compTip: tipY,
+                    compVal: vy,
+                    color: 0x16a34a,
+                    textClass: 'text-emerald-600',
+                    symbol: 'θ<sub>y</sub>',
+                    radiusScale: 1.00
+                },
+                {
+                    key: 'z',
+                    axisDir: new THREE.Vector3(0, 0, 1),
+                    compTip: tipZ,
+                    compVal: vz,
+                    color: 0x2563eb,
+                    textClass: 'text-blue-600',
+                    symbol: 'θ<sub>z</sub>',
+                    radiusScale: 1.15
+                }
+            ];
+
+            axesData.forEach(item => {
+                const isSelected = state.angleFilter === 'all' || state.angleFilter === item.key;
+                if (!isSelected) return;
+
+                // A. Triângulo Retângulo Sombreado (Pi -> Ponta da Componente no Eixo -> Ponta do Vetor Pf)
+                if (state.showTriangles && Math.abs(item.compVal) > 0.01) {
+                    const triOpacity = state.angleFilter === item.key ? 0.24 : 0.14;
+                    mainGroup.add(createTrianglePlane(pI, item.compTip, pF, item.color, triOpacity));
+                    mainGroup.add(createDashedLine(item.compTip, pF, item.color, 0.22, 0.14, 0.85));
+                }
+
+                // B. Setor Circular Preenchido + Arco de Cota medido sempre a partir do semi-eixo POSITIVO (+x, +y, +z)
+                const arcRadius = baseRadius * item.radiusScale;
+                const sectorFillOpacity = state.angleFilter === item.key ? 0.38 : 0.24;
+                const { group: sectorGroup, midPoint } = createDimensionSectorAndArc(
+                    pI,
+                    item.axisDir,
+                    vNorm,
+                    arcRadius,
+                    item.color,
+                    sectorFillOpacity
+                );
+                mainGroup.add(sectorGroup);
+
+                // C. Rótulo Limpo de Livro Didático (θx, θy, θz) posicionado logo fora do meio do arco
+                const deg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(vNorm.dot(item.axisDir), -1, 1)));
+                const outDir = midPoint.clone().sub(pI).normalize();
+                const labelPos = pI.clone().add(outDir.multiplyScalar(arcRadius + 0.48));
+
+                const labelHtml = state.showAngleDeg
+                    ? `${item.symbol} = ${deg.toFixed(1)}°`
+                    : `${item.symbol}`;
+
+                create3DLabel(
+                    labelPos,
+                    labelHtml,
+                    `math-angle-label text-sm sm:text-base ${item.textClass}`,
+                    true
+                );
+            });
+
+            // 4. Caixa 3D (Paralelepípedo opcional)
+            if (state.showBox) {
+                const pXY = new THREE.Vector3(state.xf, state.yf, state.zi);
+                const pXZ = new THREE.Vector3(state.xf, state.yi, state.zf);
+                const pYZ = new THREE.Vector3(state.xi, state.yf, state.zf);
+
+                mainGroup.add(createDashedLine(tipX, pXY, 0x64748b, 0.2, 0.15, 0.7));
+                mainGroup.add(createDashedLine(tipY, pXY, 0x64748b, 0.2, 0.15, 0.7));
+                mainGroup.add(createDashedLine(pXY, pF, 0x64748b, 0.2, 0.15, 0.7));
+                mainGroup.add(createDashedLine(tipZ, pXZ, 0x64748b, 0.2, 0.15, 0.5));
+                mainGroup.add(createDashedLine(tipZ, pYZ, 0x64748b, 0.2, 0.15, 0.5));
+                mainGroup.add(createDashedLine(tipX, pXZ, 0x64748b, 0.2, 0.15, 0.5));
+                mainGroup.add(createDashedLine(tipY, pYZ, 0x64748b, 0.2, 0.15, 0.5));
+                mainGroup.add(createDashedLine(pXZ, pF, 0x64748b, 0.2, 0.15, 0.5));
+                mainGroup.add(createDashedLine(pYZ, pF, 0x64748b, 0.2, 0.15, 0.5));
+            }
+
+            // 5. SETA PRINCIPAL DO VETOR V — Muito mais espessa, destacada e imponente que os eixos
+            const mainArrow = createCustomArrow(pI, vecV, length, 0x0f172a, 0.135, 0.85, 0.31, 1.0);
+            mainGroup.add(mainArrow);
+
+            // Esfera vermelha destacada na extremidade Pf (Exatamente como o ponto na ponta do vetor da Figura 2.4.4)
+            const pfSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.18, 20, 20),
+                new THREE.MeshBasicMaterial({ color: 0xdc2626 })
+            );
+            pfSphere.position.copy(pF);
+            mainGroup.add(pfSphere);
+
+            // Rótulo destacado na ponta Pf do vetor
+            const tipLabelPos = pF.clone().add(vNorm.clone().multiplyScalar(0.7));
+            create3DLabel(
+                tipLabelPos,
+                `V ⟨${fmtNum(vx)}, ${fmtNum(vy)}, ${fmtNum(vz)}⟩`,
+                'px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-slate-900 text-white border border-slate-700 shadow-md',
+                true
+            );
+        }
+
+        function fmtNum(n) {
+            return Number.isInteger(n) ? n.toString() : n.toFixed(1);
+        }
+
+        function fmtSignedSub(a, b) {
+            const bStr = b < 0 ? `(${fmtNum(b)})` : fmtNum(b);
+            return `(${fmtNum(a)} − ${bStr})`;
+        }
+
+        function formatAlgebraic(x, y, z, symbol = 'V', decimals = 2) {
+            const fmt = (v) => Number.isInteger(v) ? Math.abs(v).toString() : Math.abs(v).toFixed(decimals);
+            const signX = x < 0 ? '-' : '';
+            const signY = y < 0 ? ' - ' : ' + ';
+            const signZ = z < 0 ? ' - ' : ' + ';
+            return `${symbol} = ${signX}${fmt(x)}î${signY}${fmt(y)}ĵ${signZ}${fmt(z)}k̂`;
+        }
+
+        // Atualiza todos os textos e cálculos matemáticos no painel lateral
+        function updateMathPanel() {
+            const vx = state.xf - state.xi;
+            const vy = state.yf - state.yi;
+            const vz = state.zf - state.zi;
+
+            const magSq = vx * vx + vy * vy + vz * vz;
+            const mag = Math.sqrt(magSq);
+
+            // Badge se Pi está na origem ou deslocado
+            const isAtOrigin = (state.xi === 0 && state.yi === 0 && state.zi === 0);
+            const badgePi = document.getElementById('badge-pi');
+            badgePi.textContent = isAtOrigin ? 'Origem (0,0,0)' : 'Deslocado';
+            badgePi.className = isAtOrigin
+                ? 'font-mono text-[10px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200'
+                : 'font-mono text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200';
+
+            // Subtrações explícitas nos rótulos Vx, Vy, Vz
+            document.getElementById('calc-vx-sub').textContent = fmtSignedSub(state.xf, state.xi);
+            document.getElementById('calc-vy-sub').textContent = fmtSignedSub(state.yf, state.yi);
+            document.getElementById('calc-vz-sub').textContent = fmtSignedSub(state.zf, state.zi);
+
+            // Equação no Topo e no Card
+            document.getElementById('viewport-vector-eq').textContent = `V = ⟨${fmtNum(vx)}, ${fmtNum(vy)}, ${fmtNum(vz)}⟩`;
+            document.getElementById('math-algebraic').textContent = formatAlgebraic(vx, vy, vz, 'V', 2);
+            document.getElementById('math-step-diff').textContent =
+                `⟨${fmtNum(state.xf)}−${fmtNum(state.xi)}, ${fmtNum(state.yf)}−${fmtNum(state.yi)}, ${fmtNum(state.zf)}−${fmtNum(state.zi)}⟩ = ⟨${fmtNum(vx)}, ${fmtNum(vy)}, ${fmtNum(vz)}⟩`;
+
+            // Módulo
+            document.getElementById('math-magnitude').textContent = mag.toFixed(4);
+            document.getElementById('math-magnitude-exact').textContent = Number.isInteger(magSq) ? `√${magSq}` : `√${magSq.toFixed(1)}`;
+            document.getElementById('math-magnitude-formula').textContent = `√((${fmtNum(vx)})² + (${fmtNum(vy)})² + (${fmtNum(vz)})²)`;
+
+            if (mag > 0.00001) {
+                const ux = vx / mag;
+                const uy = vy / mag;
+                const uz = vz / mag;
+
+                const txDeg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(ux, -1, 1)));
+                const tyDeg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(uy, -1, 1)));
+                const tzDeg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(uz, -1, 1)));
+
+                document.getElementById('angle-tx').textContent = `${txDeg.toFixed(1)}°`;
+                document.getElementById('cos-tx').innerHTML = `cos θ<sub>x</sub> = ${ux.toFixed(3)}`;
+
+                document.getElementById('angle-ty').textContent = `${tyDeg.toFixed(1)}°`;
+                document.getElementById('cos-ty').innerHTML = `cos θ<sub>y</sub> = ${uy.toFixed(3)}`;
+
+                document.getElementById('angle-tz').textContent = `${tzDeg.toFixed(1)}°`;
+                document.getElementById('cos-tz').innerHTML = `cos θ<sub>z</sub> = ${uz.toFixed(3)}`;
+
+                document.getElementById('math-unit-eq').textContent = formatAlgebraic(ux, uy, uz, 'û', 4);
+            } else {
+                ['tx', 'ty', 'tz'].forEach(k => {
+                    document.getElementById(`angle-${k}`).textContent = '—';
+                    document.getElementById(`cos-${k}`).textContent = 'Indefinido';
+                });
+                document.getElementById('math-unit-eq').textContent = 'Vetor Nulo (|V| = 0)';
+            }
+        }
+
+        // Sincroniza todos os inputs de HTML com o objeto `state` e redesenha a cena
+        function refreshAll() {
+            const vx = parseFloat((state.xf - state.xi).toFixed(4));
+            const vy = parseFloat((state.yf - state.yi).toFixed(4));
+            const vz = parseFloat((state.zf - state.zi).toFixed(4));
+
+            document.getElementById('inp-xi').value = state.xi;
+            document.getElementById('inp-yi').value = state.yi;
+            document.getElementById('inp-zi').value = state.zi;
+
+            document.getElementById('inp-xf').value = state.xf;
+            document.getElementById('inp-yf').value = state.yf;
+            document.getElementById('inp-zf').value = state.zf;
+
+            document.getElementById('num-vx').value = vx;
+            document.getElementById('num-vy').value = vy;
+            document.getElementById('num-vz').value = vz;
+
+            document.getElementById('slider-vx').value = THREE.MathUtils.clamp(vx, -12, 12);
+            document.getElementById('slider-vy').value = THREE.MathUtils.clamp(vy, -12, 12);
+            document.getElementById('slider-vz').value = THREE.MathUtils.clamp(vz, -12, 12);
+
+            updateSceneGeometry();
+            updateMathPanel();
+        }
+
+        // Projeção de coordenadas 3D para os rótulos HTML
+        function updateLabelsProjection() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            labels3D.forEach(item => {
+                const pos = item.position.clone();
+                pos.project(camera);
+
+                if (pos.z > 1) {
+                    item.element.style.opacity = '0';
+                    return;
+                }
+
+                const x = (pos.x * 0.5 + 0.5) * width;
+                const y = (-(pos.y * 0.5) + 0.5) * height;
+
+                item.element.style.left = `${x}px`;
+                item.element.style.top = `${y}px`;
+                item.element.style.opacity = '1';
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            updateLabelsProjection();
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        // ================= FUNÇÕES INTERATIVAS DA UI =================
+
+        function setPoints(xi, yi, zi, xf, yf, zf) {
+            state.xi = xi; state.yi = yi; state.zi = zi;
+            state.xf = xf; state.yf = yf; state.zf = zf;
+            refreshAll();
+        }
+
+        // Leva Pi para (0,0,0) preservando as componentes atuais (Vx, Vy, Vz)
+        function snapInitialToOrigin() {
+            const vx = state.xf - state.xi;
+            const vy = state.yf - state.yi;
+            const vz = state.zf - state.zi;
+            setPoints(0, 0, 0, vx, vy, vz);
+            controls.target.set(0, 0, 0);
+        }
+
+        // Inverte o ponto inicial com o ponto final (Pi <-> Pf)
+        function swapPointsAB() {
+            setPoints(state.xf, state.yf, state.zf, state.xi, state.yi, state.zi);
+        }
+
+        // Normaliza o vetor para módulo 1 mantendo o ponto inicial Pi
+        function normalizeToInput() {
+            const vx = state.xf - state.xi;
+            const vy = state.yf - state.yi;
+            const vz = state.zf - state.zi;
+            const mag = Math.sqrt(vx * vx + vy * vy + vz * vz);
+            if (mag > 0.0001) {
+                setPoints(
+                    state.xi, state.yi, state.zi,
+                    parseFloat((state.xi + vx / mag).toFixed(3)),
+                    parseFloat((state.yi + vy / mag).toFixed(3)),
+                    parseFloat((state.zi + vz / mag).toFixed(3))
+                );
+            }
+        }
+
+        function randomPoints() {
+            const rnd = (min, max) => Math.round((Math.random() * (max - min) + min) * 2) / 2;
+            const xi = rnd(-3, 3);
+            const yi = rnd(-3, 3);
+            const zi = rnd(0, 3);
+            const vx = rnd(3, 7) * (Math.random() > 0.25 ? 1 : -1);
+            const vy = rnd(3, 7) * (Math.random() > 0.25 ? 1 : -1);
+            const vz = rnd(3, 6);
+            setPoints(xi, yi, zi, xi + vx, yi + vy, zi + vz);
+        }
+
+        // Seleciona qual ângulo diretor exibir para evitar qualquer poluição visual
+        function setAngleFilter(mode) {
+            state.angleFilter = mode;
+            const btns = {
+                all: document.getElementById('btn-ang-all'),
+                x: document.getElementById('btn-ang-x'),
+                y: document.getElementById('btn-ang-y'),
+                z: document.getElementById('btn-ang-z'),
+                none: document.getElementById('btn-ang-none')
+            };
+
+            Object.keys(btns).forEach(k => {
+                if (k === mode) {
+                    btns[k].classList.add('bg-slate-900', 'border-slate-900', 'text-white');
+                    btns[k].classList.remove('border-transparent', 'hover:bg-slate-100');
+                } else {
+                    btns[k].classList.remove('bg-slate-900', 'border-slate-900', 'text-white');
+                    btns[k].classList.add('border-transparent', 'hover:bg-slate-100');
+                }
+            });
+
+            updateSceneGeometry();
+        }
+
+        // Centraliza a órbita da câmera no meio do vetor atual
+        function focusOnVector() {
+            const mid = new THREE.Vector3(
+                (state.xi + state.xf) / 2,
+                (state.yi + state.yf) / 2,
+                (state.zi + state.zf) / 2
+            );
+            controls.target.copy(mid);
+            camera.up.set(0, 0, 1);
+            camera.position.set(mid.x + 14, mid.y + 12, mid.z + 9);
+            controls.update();
+        }
+
+        function setCameraView(view) {
+            const pI = new THREE.Vector3(state.xi, state.yi, state.zi);
+            controls.target.copy(pI);
+            switch (view) {
+                case 'iso':
+                    camera.up.set(0, 0, 1);
+                    camera.position.set(pI.x + 15, pI.y + 13, pI.z + 10);
+                    break;
+                case 'xy':
+                    camera.up.set(0, 1, 0);
+                    camera.position.set(pI.x, pI.y, pI.z + 24);
+                    break;
+                case 'xz':
+                    camera.up.set(0, 0, 1);
+                    camera.position.set(pI.x, pI.y + 24, pI.z);
+                    break;
+                case 'yz':
+                    camera.up.set(0, 0, 1);
+                    camera.position.set(pI.x + 24, pI.y, pI.z);
+                    break;
+            }
+            camera.lookAt(pI);
+            controls.update();
+        }
+
+        function copySummary() {
+            const text = [
+                `Ponto Inicial Pi: (${state.xi}, ${state.yi}, ${state.zi})`,
+                `Ponto Final Pf: (${state.xf}, ${state.yf}, ${state.zf})`,
+                `Vetor Posição: ${document.getElementById('math-algebraic').textContent}`,
+                `Módulo |V|: ${document.getElementById('math-magnitude').textContent}`,
+                `Ângulos Diretores: θx = ${document.getElementById('angle-tx').textContent}, θy = ${document.getElementById('angle-ty').textContent}, θz = ${document.getElementById('angle-tz').textContent}`
+            ].join('\n');
+
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            const btn = document.getElementById('btn-copy');
+            const original = btn.innerHTML;
+            btn.innerHTML = `<span class="text-emerald-600 font-bold">Copiado!</span>`;
+            setTimeout(() => { btn.innerHTML = original; }, 1500);
+        }
+
+        // Configurar Event Listeners
+        window.onload = function () {
+            initThreeJS();
+
+            // 1. Listeners para Coordenadas Iniciais (Xi, Yi, Zi) e Finais (Xf, Yf, Zf)
+            const coordMap = [
+                { id: 'inp-xi', key: 'xi' },
+                { id: 'inp-yi', key: 'yi' },
+                { id: 'inp-zi', key: 'zi' },
+                { id: 'inp-xf', key: 'xf' },
+                { id: 'inp-yf', key: 'yf' },
+                { id: 'inp-zf', key: 'zf' }
+            ];
+
+            coordMap.forEach(item => {
+                document.getElementById(item.id).addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    state[item.key] = isNaN(val) ? 0 : val;
+                    refreshAll();
+                });
+            });
+
+            // 2. Listeners para Componentes (Vx, Vy, Vz) — atualizam Pf = Pi + V
+            const compMap = [
+                { numId: 'num-vx', sliderId: 'slider-vx', iKey: 'xi', fKey: 'xf' },
+                { numId: 'num-vy', sliderId: 'slider-vy', iKey: 'yi', fKey: 'yf' },
+                { numId: 'num-vz', sliderId: 'slider-vz', iKey: 'zi', fKey: 'zf' }
+            ];
+
+            compMap.forEach(item => {
+                document.getElementById(item.sliderId).addEventListener('input', (e) => {
+                    const compVal = parseFloat(e.target.value) || 0;
+                    state[item.fKey] = parseFloat((state[item.iKey] + compVal).toFixed(4));
+                    refreshAll();
+                });
+
+                document.getElementById(item.numId).addEventListener('input', (e) => {
+                    const compVal = parseFloat(e.target.value);
+                    const validComp = isNaN(compVal) ? 0 : compVal;
+                    state[item.fKey] = parseFloat((state[item.iKey] + validComp).toFixed(4));
+                    refreshAll();
+                });
+            });
+
+            // 3. Toggles de Visualização 3D
+            document.getElementById('toggle-triangles').addEventListener('change', (e) => {
+                state.showTriangles = e.target.checked;
+                updateSceneGeometry();
+            });
+            document.getElementById('toggle-angle-deg').addEventListener('change', (e) => {
+                state.showAngleDeg = e.target.checked;
+                updateSceneGeometry();
+            });
+            document.getElementById('toggle-box').addEventListener('change', (e) => {
+                state.showBox = e.target.checked;
+                updateSceneGeometry();
+            });
+            document.getElementById('toggle-components').addEventListener('change', (e) => {
+                state.showComponents = e.target.checked;
+                updateSceneGeometry();
+            });
+        };
+    </script>
+</body>
+</html>
